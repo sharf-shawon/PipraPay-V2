@@ -24,7 +24,7 @@
         logoutCookie();
 ?>
         <script>
-            location.href="https://<?php echo $_SERVER['HTTP_HOST']?>/admin/login";
+            location.href="/admin/login";
         </script>
 <?php
         exit();

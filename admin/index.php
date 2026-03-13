@@ -32,7 +32,7 @@
             if($global_user_login == false){
 ?>
                 <script>
-                    location.href="https://<?php echo $_SERVER['HTTP_HOST']?>/admin/login";
+                location.href="/admin/login";
                 </script>
 <?php
                 exit();
@@ -41,7 +41,7 @@
     }else{
 ?>
         <script>
-            location.href="https://<?php echo $_SERVER['HTTP_HOST']?>/install/";
+      location.href="/install/";
         </script>
 <?php
         exit();

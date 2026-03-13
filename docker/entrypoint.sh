@@ -13,6 +13,7 @@ set -euo pipefail
 
 # ── Environment variable defaults ─────────────────────────────────────────────
 DB_HOST="${DB_HOST:-mysql}"
+DB_PORT="${DB_PORT:-3306}"
 DB_USER="${DB_USER:-piprapay}"
 DB_PASS="${DB_PASS:-}"
 DB_NAME="${DB_NAME:-piprapay}"
@@ -23,21 +24,26 @@ PASSWORD_RESET="${PASSWORD_RESET:-off}"
 # Defaults to 0 to allow local development over plain HTTP.
 SESSION_COOKIE_SECURE="${SESSION_COOKIE_SECURE:-0}"
 
+if [ "$DB_PORT" = "33060" ]; then
+    echo "[entrypoint] WARNING: DB_PORT=33060 usually targets MySQL X Plugin, not classic SQL protocol."
+    echo "[entrypoint]          PipraPay uses classic MySQL protocol (typically port 3306)."
+fi
+
 PP_CONFIG="/var/www/html/pp-config.php"
 INSTALL_DIR="/var/www/html/install"
 
 # ── Helper: run MySQL with credentials from a temp options file ────────────────
 _mysql_opts_file=$(mktemp)
 chmod 600 "$_mysql_opts_file"
-printf '[client]\nhost=%s\nuser=%s\npassword=%s\n' \
-    "$DB_HOST" "$DB_USER" "$DB_PASS" > "$_mysql_opts_file"
+printf '[client]\nhost=%s\nport=%s\nuser=%s\npassword=%s\n' \
+    "$DB_HOST" "$DB_PORT" "$DB_USER" "$DB_PASS" > "$_mysql_opts_file"
 
 mysql_cmd() {
-    mysql --defaults-extra-file="$_mysql_opts_file" "$DB_NAME" "$@"
+    mysql --defaults-extra-file="$_mysql_opts_file" --ssl=0 "$DB_NAME" "$@"
 }
 
 mysql_admin_cmd() {
-    mysqladmin --defaults-extra-file="$_mysql_opts_file" "$@"
+    mysqladmin --defaults-extra-file="$_mysql_opts_file" --ssl=0 "$@"
 }
 
 cleanup() {
@@ -51,6 +57,7 @@ if [ ! -f "$PP_CONFIG" ]; then
     cat > "$PP_CONFIG" << PHPEOF
 <?php
 \$db_host        = '${DB_HOST}';
+\$db_port        = '${DB_PORT}';
 \$db_user        = '${DB_USER}';
 \$db_pass        = '${DB_PASS}';
 \$db_name        = '${DB_NAME}';

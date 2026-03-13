@@ -132,7 +132,8 @@
     
         // SQL update
         if (file_exists($update_sql_path)) {
-            $conn = new mysqli($db_host, $db_user, $db_pass, $db_name);
+            $port = (isset($db_port) && is_numeric($db_port)) ? (int)$db_port : 3306;
+            $conn = new mysqli($db_host, $db_user, $db_pass, $db_name, $port);
             if ($conn->connect_error) {
                 unlink($maintenance_file);
                 echo json_encode(["status" => "false", "message" => "DB connection failed"]);

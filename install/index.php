@@ -2,13 +2,14 @@
     if (file_exists(__DIR__."/../pp-config.php")) {
 ?>
         <script>
-            location.href="https://<?php echo $_SERVER['HTTP_HOST']?>";
+            location.href="/";
         </script>
 <?php
         exit();
     }
     
     $phpVersion = PHP_VERSION;
+    $defaultDbPort = getenv('DB_PORT') ?: '3306';
     $requirements = [
         [
             'name'  => "PHP Version 7.4.x to 8.3.x ($phpVersion detected)",
@@ -83,6 +84,7 @@
         // Save config.php
         $configContent = "<?php
     \$db_host = '$datahost';
+        \$db_port = '$dataport';
     \$db_user = '$dbUser';
     \$db_pass = '$dbPass';
     \$db_name = '$dbName';
@@ -309,7 +311,7 @@
                 <p class="text-muted mb-4">Please provide your database connection details:</p>
                 
                 <div class="database-type-selector">
-                    <div class="database-card selected" data-host="localhost" data-port="3306">
+                    <div class="database-card selected" data-host="localhost" data-port="<?= htmlspecialchars($defaultDbPort, ENT_QUOTES, 'UTF-8') ?>">
                         <div class="database-icon">
                             <i class="fa fa-database"></i>
                         </div>
@@ -344,7 +346,7 @@
                         <div class="col-md-6">
                             <div class="form-group required">
                                 <label for="dbPort" class="form-label">Database Port</label>
-                                <input type="text" class="form-control" id="dbPort" value="3306" required>
+                                <input type="text" class="form-control" id="dbPort" value="<?= htmlspecialchars($defaultDbPort, ENT_QUOTES, 'UTF-8') ?>" required>
                             </div>
                         </div>
                     </div>

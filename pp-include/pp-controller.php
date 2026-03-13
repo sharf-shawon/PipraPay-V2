@@ -17,9 +17,11 @@
     use Dompdf\Dompdf;
 
     function connectDatabase() {
-        global $db_host, $db_user, $db_pass, $db_name;
+        global $db_host, $db_port, $db_user, $db_pass, $db_name;
+
+        $port = (isset($db_port) && is_numeric($db_port)) ? (int)$db_port : 3306;
     
-        $conn = new mysqli($db_host, $db_user, $db_pass, $db_name);
+        $conn = new mysqli($db_host, $db_user, $db_pass, $db_name, $port);
     
         if ($conn->connect_error) {
             die('Connection failed: ' . $conn->connect_error);

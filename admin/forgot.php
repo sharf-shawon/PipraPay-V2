@@ -25,7 +25,7 @@
             if($global_user_login == true){
 ?>
                 <script>
-                    location.href="https://<?php echo $_SERVER['HTTP_HOST']?>/admin/dashboard";
+                    location.href="/admin/dashboard";
                 </script>
 <?php
                 exit();
@@ -34,7 +34,7 @@
     }else{
 ?>
         <script>
-            location.href="https://<?php echo $_SERVER['HTTP_HOST']?>/install/";
+        location.href="/install/";
         </script>
 <?php
         exit();
@@ -80,7 +80,7 @@
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="https://<?php echo $_SERVER['HTTP_HOST']?>/pp-external/assets/style-login.css?v=1.4">
+    <link rel="stylesheet" href="/pp-external/assets/style-login.css?v=1.4">
 </head>
 <body>
     <div class="login-container">
