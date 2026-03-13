@@ -1,0 +1,32 @@
+# ── Git ───────────────────────────────────────────────────────────────────────
+.git
+.gitignore
+.gitattributes
+
+# ── Documentation (not needed at runtime) ────────────────────────────────────
+docs/
+
+# ── Markdown / licence files ──────────────────────────────────────────────────
+*.md
+!README.md
+TRADEMARK.md
+
+# ── Runtime-generated config (must never be baked into the image) ─────────────
+pp-config.php
+
+# ── Local environment files ───────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Docker files (not needed inside the image) ────────────────────────────────
+Dockerfile
+docker-compose*.yml
+
+# ── Editor / OS artefacts ─────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo

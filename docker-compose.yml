@@ -1,0 +1,87 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# PipraPay — docker-compose.yml
+#
+# Use this file for local development or simple single-server deployments.
+# For production with automatic TLS, use docker-compose.prod.yml instead.
+#
+# Quick start:
+#   cp .env.example .env          # fill in secrets
+#   docker compose up -d
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── PHP / Apache application ───────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-80}:80"
+    environment:
+      DB_HOST:        mysql
+      DB_NAME:        ${DB_NAME:-piprapay}
+      DB_USER:        ${DB_USER:-piprapay}
+      DB_PASS:        ${DB_PASS}
+      DB_PREFIX:      ${DB_PREFIX:-pp_}
+      APP_MODE:       ${APP_MODE:-live}
+      PASSWORD_RESET: ${PASSWORD_RESET:-off}
+      # Optional: supply these to auto-create the admin user on first run.
+      # Remove or leave blank to use the web installer instead.
+      ADMIN_NAME:     ${ADMIN_NAME:-}
+      ADMIN_USER:     ${ADMIN_USER:-}
+      ADMIN_PASS:     ${ADMIN_PASS:-}
+      ADMIN_EMAIL:    ${ADMIN_EMAIL:-}
+    volumes:
+      # Persist user-uploaded media files across container recreations
+      - app_media:/var/www/html/pp-external/media
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ── MySQL 8.0 database ─────────────────────────────────────────────────────
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE:      ${DB_NAME:-piprapay}
+      MYSQL_USER:          ${DB_USER:-piprapay}
+      MYSQL_PASSWORD:      ${DB_PASS}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "--silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ── Cron sidecar — auto-verify pending payments ────────────────────────────
+  # Set CRON_URL to the full URL returned by Admin Panel → System Settings →
+  # Cron Job (e.g. http://app/install/?cron=verify for Docker-internal access).
+  cron:
+    image: alpine:3.20
+    restart: unless-stopped
+    environment:
+      CRON_URL: ${CRON_URL:-http://app/install/?cron=verify}
+    command: >
+      sh -c "
+        echo '*/10 * * * * wget -q -O /dev/null \"$$CRON_URL\" 2>&1' | crontab - &&
+        crond -f -d 8
+      "
+    depends_on:
+      app:
+        condition: service_healthy
+
+# ── Named volumes ──────────────────────────────────────────────────────────────
+volumes:
+  mysql_data:
+  app_media:
