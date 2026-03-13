@@ -1,0 +1,132 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# PipraPay CI/CD Pipeline
+#
+# Triggers:
+#   • Push to main or master  → build, push image to GHCR, deploy to production
+#   • Pull requests           → build only (no push, no deploy) for validation
+#   • Manual dispatch         → full build + push + deploy
+#
+# Required GitHub Secrets (repository or environment "production"):
+#   DEPLOY_HOST      — production server hostname / IP
+#   DEPLOY_USER      — SSH user on the production server
+#   DEPLOY_SSH_KEY   — private SSH key (PEM format)
+#   DEPLOY_PORT      — (optional) SSH port, defaults to 22
+#   DEPLOY_PATH      — (optional) deployment directory, defaults to /opt/piprapay
+# ─────────────────────────────────────────────────────────────────────────────
+name: Build and Deploy
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # ── Build & push Docker image ───────────────────────────────────────────────
+  build:
+    name: Build & Push Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU (for multi-platform builds)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        # Only log in on pushes and manual dispatches (not PRs from forks)
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract image metadata (tags & labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            # Branch name tag (e.g. main, master)
+            type=ref,event=branch
+            # Short commit SHA tag (e.g. sha-abc1234)
+            type=sha,prefix=sha-
+            # 'latest' tag only on the default branch
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          # Push only on non-PR events
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Use GitHub Actions cache to speed up subsequent builds
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Deploy to production ────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: build
+    # Only deploy on direct pushes to main/master (not PRs)
+    if: >
+      github.event_name != 'pull_request' &&
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    environment: production
+    permissions:
+      # No repository or package permissions are required for an SSH deployment
+      contents: none
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host:     ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key:      ${{ secrets.DEPLOY_SSH_KEY }}
+          port:     ${{ secrets.DEPLOY_PORT || 22 }}
+          script: |
+            set -euo pipefail
+
+            DEPLOY_PATH="${{ secrets.DEPLOY_PATH || '/opt/piprapay' }}"
+            IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+
+            echo "==> Pulling latest image: $IMAGE"
+            docker pull "$IMAGE"
+
+            echo "==> Updating stack in $DEPLOY_PATH"
+            cd "$DEPLOY_PATH"
+
+            # Bring up the updated stack (rolling restart of changed services)
+            docker compose \
+              -f docker-compose.yml \
+              -f docker-compose.prod.yml \
+              up -d --remove-orphans
+
+            echo "==> Pruning dangling images"
+            docker image prune -f
+
+            echo "==> Deployment complete."

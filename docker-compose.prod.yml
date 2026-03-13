@@ -1,0 +1,119 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# PipraPay — docker-compose.prod.yml
+#
+# Production overrides for docker-compose.yml.
+# Features:
+#   • Uses the pre-built image from GitHub Container Registry (no build step).
+#   • Traefik reverse proxy with automatic Let's Encrypt TLS.
+#   • Network isolation — MySQL is only reachable on the internal network.
+#   • Resource limits to protect the host.
+#
+# Prerequisites on the production server:
+#   1. Docker Engine + Docker Compose plugin installed.
+#   2. Ports 80 and 443 open in the firewall.
+#   3. A valid DNS A-record pointing to the server for DOMAIN.
+#
+# Quick start:
+#   cp .env.example .env      # fill in DOMAIN, ACME_EMAIL, secrets, IMAGE_NAME
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── PHP / Apache application ───────────────────────────────────────────────
+  app:
+    # Use the image built and pushed by the CI pipeline instead of building locally.
+    # When 'image' is specified, `docker compose up` uses (and pulls) this image;
+    # the 'build' key inherited from docker-compose.yml is ignored unless you
+    # explicitly run `docker compose build`.
+    image: ${IMAGE_NAME:-ghcr.io/sharf-shawon/piprapay-v2}:${IMAGE_TAG:-latest}
+    # Don't expose the port directly; Traefik handles ingress
+    ports: []
+    environment:
+      # Enable secure-only session cookies — Traefik terminates TLS so the
+      # browser always communicates over HTTPS.
+      SESSION_COOKIE_SECURE: "1"
+    networks:
+      - internal
+      - web
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    labels:
+      - "traefik.enable=true"
+      # HTTP → HTTPS redirect is handled by the Traefik entrypoint redirect below
+      - "traefik.http.routers.piprapay.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.piprapay.entrypoints=websecure"
+      - "traefik.http.routers.piprapay.tls=true"
+      - "traefik.http.routers.piprapay.tls.certresolver=letsencrypt"
+      - "traefik.http.services.piprapay.loadbalancer.server.port=80"
+
+  # ── MySQL ──────────────────────────────────────────────────────────────────
+  mysql:
+    networks:
+      - internal
+    # Keep MySQL off the public network
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  # ── Cron sidecar ──────────────────────────────────────────────────────────
+  cron:
+    networks:
+      - internal
+
+  # ── Traefik reverse proxy (automatic TLS via Let's Encrypt) ───────────────
+  traefik:
+    image: traefik:v3.3
+    restart: unless-stopped
+    command:
+      # Docker provider — discovers services via labels
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=web"
+      # Entrypoints
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      # Redirect all HTTP → HTTPS
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--entrypoints.web.http.redirections.entrypoint.permanent=true"
+      # Let's Encrypt TLS challenge
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+      # Security — disable the Traefik dashboard in production
+      - "--api.dashboard=false"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Read Docker socket (read-only) so Traefik can discover services
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Persist Let's Encrypt certificates across restarts
+      - traefik_letsencrypt:/letsencrypt
+    networks:
+      - web
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+
+# ── Networks ───────────────────────────────────────────────────────────────────
+networks:
+  # Public-facing network — only app and Traefik are connected here
+  web:
+    driver: bridge
+  # Private backend network — app, MySQL, and cron only
+  internal:
+    driver: bridge
+    internal: true
+
+# ── Named volumes (extend the base compose volumes) ───────────────────────────
+volumes:
+  traefik_letsencrypt:
